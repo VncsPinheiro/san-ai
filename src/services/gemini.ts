@@ -4,7 +4,7 @@ import type { Message } from '../types/Message.ts'
 import type { Models } from '../types/Models.ts'
 import type { Temperature } from '../types/Temperature.ts'
 
-const gemini = new GoogleGenAI({
+export const gemini = new GoogleGenAI({
 	apiKey: env.API_KEY,
 })
 
@@ -29,6 +29,11 @@ const defaultSystem =
 const defaultHistory: HistoryType = [
 	{ role: 'user', parts: [{ text: defaultSystem }] },
 ]
+
+// const history:  HistoryType = [
+// 		...defaultHistory
+// 	]
+
 
 // Sempre que é iniciado pela primeria vez, deve receber o MedicalRecord o usuário para usar em Meus dados, e junto com isso, deve receber o histórico de conversas com o usuário, sendo sempre após a declaração do system e do Meus dados
 
@@ -59,6 +64,7 @@ export async function generateAnswer(
 	const history: HistoryType = userHistory
 		? [...defaultHistory, ...userHistory]
 		: [...defaultHistory]
+	
 
 	const context = contextRaw.join('\n\n')
 
@@ -86,8 +92,16 @@ export async function generateAnswer(
 		throw new Error('Failed to generate answer')
 	}
 
+	history.push(
+		{ role: 'model', parts: [{ text: response.text }] }
+	)
+	history.push(
+		{ role: 'user', parts: [{ text: prompt }] }
+	)
+
 	return {
 		yourAnswer: response.text,
+		prompt,
 		usage: response.usageMetadata,
 		modelVersion: response.modelVersion,
 		fullResponse: response

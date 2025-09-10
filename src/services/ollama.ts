@@ -30,7 +30,6 @@ export interface TextType {
 	origin: string
 }
 
-// console.log()
 
 let embedder: FeatureExtractionPipeline | null = null
 
@@ -89,7 +88,7 @@ export async function generateEmbedding(data: TextType[], chunkOption = true) {
 			}
 		})
 	)
-	console.log(result)
+	// console.log(result)
 	return result
 }
 

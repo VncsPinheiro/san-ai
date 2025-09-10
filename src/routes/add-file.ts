@@ -1,10 +1,10 @@
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod'
-import { generateEmbedding } from '../services/ollama.ts'
-import type { TextType } from '../services/ollama.ts'
-import { db } from '../db/connection.ts'
-import { schema } from '../db/schema/schema.ts'
 import PdfParse from 'pdf-parse'
 import z from 'zod'
+import { db } from '../db/connection.ts'
+import { schema } from '../db/schema/schema.ts'
+import type { TextType } from '../services/ollama.ts'
+import { generateEmbedding } from '../services/xenova.ts'
 
 const textTypeSchema = z.object({
 	text: z.string(),
@@ -18,13 +18,13 @@ export const addFileRoute: FastifyPluginCallbackZod = (app) => {
 			schema: {
 				body: z.union([z.array(textTypeSchema).optional(), z.null()]),
 				querystring: z.object({
-					createChunks: z.enum(['true', 'false']).optional()
-				})
+					createChunks: z.enum(['true', 'false']).optional(),
+				}),
 			},
 		},
 		async (request, response) => {
 			const createChunks = request.query.createChunks !== 'false'
-	
+
 			const file = await request.file().catch(() => null)
 
 			let fullText: string
@@ -77,6 +77,7 @@ export const addFileRoute: FastifyPluginCallbackZod = (app) => {
 					]
 
 			const embeddingsResult = await generateEmbedding(toPass, createChunks)
+			// await sendEmbeddings(toPass)
 
 			const resultMedicalData = embeddingsResult.map(async (item) => {
 				return await db
@@ -97,7 +98,7 @@ export const addFileRoute: FastifyPluginCallbackZod = (app) => {
 			response.status(201).send({
 				id: resultMedicalFile[0].id,
 				name: resultMedicalFile[0].name,
-				size: resultMedicalFile[0].size
+				size: resultMedicalFile[0].size,
 			})
 		}
 	)

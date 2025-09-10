@@ -22,6 +22,8 @@ const app = fastify({
 	bodyLimit: 50 * 1024 * 1024 // 50 MB
 }).withTypeProvider<ZodTypeProvider>()
 
+// app.server.headersTimeout = 1_200_000
+
 await app.register(cors, {
   origin: "*",
 	methods: ["GET", "POST", "PUT", "DELETE",]
