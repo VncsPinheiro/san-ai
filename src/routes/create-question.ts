@@ -4,7 +4,7 @@ import z from 'zod'
 import { db } from '../db/connection.ts'
 import { schema } from '../db/schema/schema.ts'
 import { generateAnswer } from '../services/gemini.ts'
-import { generateEmbedding } from '../services/ollama.ts'
+import { generateEmbedding } from '../services/xenova.ts'
 
 const PartSchema = z.object({
 	text: z.string(),
@@ -74,7 +74,6 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 			)
 
 			const embeddingsAsString = `[${questionEmbedding[0].embedding.join(',')}]`
-			// console.log(embeddingsAsString)
 
 			const chunks = await db
 				.select({
@@ -92,13 +91,8 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 				.limit(chunksNum ?? 10)
 
 			const context = chunks.map((chunk) => chunk.content)
-			// const t = chunks.map((item) => ({
-			// 	...item,
-			// 	similarity: item.similarity.toFixed(2)
-			// }))
-			// console.log(t)
 
-			const { yourAnswer, usage, modelVersion } =
+			const { yourAnswer, usage, modelVersion, prompt } =
 				await generateAnswer(
 					question,
 					context,
@@ -111,6 +105,7 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 
 			response.status(200).send({
 				yourAnswer,
+				prompt,
 				config: {
 					temperature,
 					medicalRecord: medicalRecord?.parts[0].text,
@@ -119,11 +114,8 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 					chunksNum,
 					model: modelVersion,
 				},
-				// context,
 				chunks,
 				usage,
-				// fullResponse,
-				
 			})
 		}
 	)
