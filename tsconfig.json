@@ -9,6 +9,7 @@
       "ESNext.Iterator"
     ],
     "module": "nodenext",
+    "outDir": "dist",
     "target": "es2022",
     "noEmit": true,
     "allowImportingTsExtensions": true,
