@@ -1,10 +1,6 @@
-import { sql } from 'drizzle-orm'
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod'
 import z from 'zod'
-import { db } from '../db/connection.ts'
-import { schema } from '../db/schema/schema.ts'
-import { generateAnswer } from '../services/gemini.ts'
-import { generateEmbedding } from '../services/xenova.ts'
+import { gemini } from '../gemini/gemini'
 
 const PartSchema = z.object({
 	text: z.string(),
@@ -23,9 +19,9 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 		{
 			schema: {
 				body: z.object({
-					question: z.string(),
-					history: HistorySchema.optional(),
-					medicalRecord: HistoryItemSchema.optional(),
+					message: z.string(),
+					userHistory: HistorySchema.optional(),
+					userData: z.string().optional(),
 					model: z
 						.enum([
 							'gemini-2.5-flash',
@@ -60,63 +56,20 @@ export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {
 			},
 		},
 		async (request, response) => {
-			const { question, history, medicalRecord, model, system } = request.body
+			const { message, userHistory, userData, model, system } = request.body
 			const { chunksNum, similarity, temperature } = request.query
-
-			const questionEmbedding = await generateEmbedding(
-				[
-					{
-						text: question,
-						origin: 'user',
-					},
-				],
-				false
-			)
-
-			const embeddingsAsString = `[${questionEmbedding[0].embedding.join(',')}]`
-
-			const chunks = await db
-				.select({
-					id: schema.medicalData.id,
-					content: schema.medicalData.content,
-					similarity: sql<number>`1 - (${schema.medicalData.embeddings} <=> ${embeddingsAsString}::vector)`,
-				})
-				.from(schema.medicalData)
-				.where(
-					sql`1 - (${schema.medicalData.embeddings}::vector <=> ${embeddingsAsString}::vector) > ${similarity ?? 0.1}`
-				)
-				.orderBy(
-					sql`${schema.medicalData.embeddings} <=> ${embeddingsAsString}::vector`
-				)
-				.limit(chunksNum ?? 10)
-
-			const context = chunks.map((chunk) => chunk.content)
-
-			const { yourAnswer, usage, modelVersion, prompt } =
-				await generateAnswer(
-					question,
-					context,
-					temperature,
-					system,
-					medicalRecord,
-					history,
-					model
-				)
-
-			response.status(200).send({
-				yourAnswer,
-				prompt,
+			const chatInteractionResult = await gemini.chat({
+				message,
+				userHistory,
+				userData,
 				config: {
 					temperature,
-					medicalRecord: medicalRecord?.parts[0].text,
 					system,
-					similarity,
-					chunksNum,
-					model: modelVersion,
-				},
-				chunks,
-				usage,
+					model,
+				}
 			})
+	
+			response.status(200).send(JSON.parse(chatInteractionResult.text))
 		}
 	)
 }

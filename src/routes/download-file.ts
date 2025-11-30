@@ -1,8 +1,6 @@
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod'
 import z from 'zod'
-import { db } from '../db/connection.ts'
-import { schema } from '../db/schema/schema.ts'
-import { eq } from 'drizzle-orm'
+import { gemini } from '../gemini/gemini'
 
 export const downloadFileRoute: FastifyPluginCallbackZod = (app) => {
 	app.get(
@@ -19,28 +17,15 @@ export const downloadFileRoute: FastifyPluginCallbackZod = (app) => {
 		},
 		async (request, response) => {
 			const fileId = request.params.fileId
-      const actionParam = request.query.action
-
-      const action = actionParam === 'download' ? 'attachment' : 'inline'
-
-			const file = await db
-				.select({
-          name: schema.medicalFile.name,
-					file: schema.medicalFile.file,
-				})
-				.from(schema.medicalFile)
-				.where(eq(schema.medicalFile.id, fileId))
-
-			if (!file[0]) {
-				throw new Error('File does not exists')
-			}
-			const { file: fileBase64, name: fileName } = file[0]
-			const fileBuffer = Buffer.from(fileBase64, 'base64')
+      const type = request.query.action === 'download' ? 'attachment' : 'inline'
+			const file = await gemini.previewOrDownload(fileId)
 
 			response.header('Content-Type', 'application/pdf')
-			response.header('Content-Disposition', `${action}; filename="${fileName}"`)
+			response.header('Content-Disposition', `${type}; filename="${file.name}"`)
 
-			return response.send(fileBuffer)
+			const buffer = Buffer.from(file.base64, 'base64')
+
+			return response.send(buffer)
 		}
 	)
 }

@@ -1,9 +1,10 @@
-import { bugData } from './bug-data.ts'
-import { medicalData } from './medical-data.ts'
-import { medicalFile } from './medical-file.ts'
+import { medicalData, medicalDataRelation } from './medical-data'
+import { medicalFile, medicalFileRelation } from './medical-file'
 
 export const schema = {
 	medicalData,
+	medicalDataRelation,
+
 	medicalFile,
-	bugData,
+	medicalFileRelation,
 }
