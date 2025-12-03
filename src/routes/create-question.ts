@@ -11,6 +11,7 @@ const HistoryItemSchema = z.object({
 	parts: z.array(PartSchema),
 })
 
+
 export const HistorySchema = z.array(HistoryItemSchema)
 
 export const createQuestionRoute: FastifyPluginCallbackZod = (app) => {

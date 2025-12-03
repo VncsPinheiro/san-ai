@@ -29,7 +29,7 @@ export const createMedicalReportsFunctionDeclaration = {
         description: 'Analysis of daily water intake.',
         properties: {
           averageHydration: { 
-            type: Type.NUMBER, // Mudei para NUMBER para facilitar gráficos se precisar
+            type: Type.NUMBER,
             description: 'Average intake in Liters (e.g. 2.5)' 
           },
           message: { type: Type.STRING, description: 'Motivational message' }
@@ -99,8 +99,7 @@ export const createMedicalReportsFunctionDeclaration = {
           year: { type: Type.NUMBER, description: 'Year (YYYY)' },
           month: { 
              type: Type.STRING, 
-             description: 'Full month name in Portuguese (e.g., "Novembro")' 
-             // Removi o enum para evitar erros, a IA saberá preencher.
+             description: 'Full month name in Portuguese (e.g., "Novembro")'
           },
           totalLogs: { type: Type.NUMBER, description: 'Total consistency days' }
         },

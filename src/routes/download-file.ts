@@ -19,9 +19,10 @@ export const downloadFileRoute: FastifyPluginCallbackZod = (app) => {
 			const fileId = request.params.fileId
       const type = request.query.action === 'download' ? 'attachment' : 'inline'
 			const file = await gemini.previewOrDownload(fileId)
+			const filenameFormated = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 
 			response.header('Content-Type', 'application/pdf')
-			response.header('Content-Disposition', `${type}; filename="${file.name}"`)
+			response.header('Content-Disposition', `${type}; filename="${filenameFormated}"`)
 
 			const buffer = Buffer.from(file.base64, 'base64')
 

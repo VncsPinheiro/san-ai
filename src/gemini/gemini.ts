@@ -12,35 +12,6 @@ import { createMedicalReportsFunctionDeclaration } from "./create-medical-report
 import { Models } from "../types/Models";
 import { Temperature } from "../types/Temperature";
 
-// interface CreateMedicalReportData {
-//   bloodPressure: { status: string, average: string, systolicAverage: number, diastolicAverage: number, totalLogs: number}
-//   symptoms: { countSymptoms: Record<string, number>, totalLogs: number }
-//   bloodSugar: {
-//     averageBloodSugar: number,
-//     minBloodSugar: number,
-//     maxBloodSugar: number,
-//     totalLogs: number
-//   }
-//   mood: { countHumor: Record<string, number>, totalLogs: number }
-//   hydratation: { averageLitersHydration: number, totalLogs: number }
-//   heartRate: {
-//     averageHeartRate: number,
-//     minHeartRate: number,
-//     maxHeartRate: number,
-//     totalLogs: number
-//   }
-//   timeRegistered: {
-//     firstDate: Date,
-//     lastDate: Date,
-//     diffDays: number,
-//     year: number,
-//     month: string
-//     totalLogs: number
-//   }
-//   month: number
-//   year: number
-// }
-
 let instance: GeminiManager | null = null
 
 class GeminiManager {
@@ -57,21 +28,66 @@ class GeminiManager {
       return instance
   }
 
+  private async refineMessage(message: string, userHistory?: HistoryType) {
+    if (!userHistory || userHistory.length === 0) return message
+
+    const refinerInstruction = `
+    TASK: Reescreva a última mensagem do usuário para torná-la autossuficiente, substituindo pronomes pelo contexto do histórico.
+    
+    EXEMPLOS DE COMPORTAMENTO:
+    
+    Histórico: "O que é Dengue?"
+    Input: "E quais os sintomas dela?"
+    Output: "Quais os sintomas da Dengue?"
+
+    Histórico: "Estou com muita dor de cabeça"
+    Input: "É perigoso?"
+    Output: "Dor de cabeça forte é perigoso?"
+
+    Histórico: "Bom dia"
+    Input: "Tudo bem?"
+    Output: "Tudo bem?"
+
+    REGRAS FINAIS:
+    - Mantenha o idioma original (PT-BR).
+    - Responda APENAS a frase reescrita. Nada de "Aqui está:".
+    `.trim()
+
+    const refinerChat = this.gemini.chats.create({
+      model: 'gemini-2.0-flash-lite', 
+      history: userHistory,
+      config: {
+        temperature: 0.0,
+        topK: 1,
+        systemInstruction: refinerInstruction,
+      }
+    })
+
+    try {
+     const result = await refinerChat.sendMessage({ message }) 
+     return result.text?.trim() ?? message
+    } catch (err) {
+      console.error('Ocorreu um erro ao refinar a pergunta para o RAG. Erro: ', err)
+      return message
+    }
+  }
+
   async chat(data: {
     message: string
     userData?: string
     userHistory?: HistoryType
     config?: { temperature?: Temperature, model?: Models, system?: string }
   }) {
+    const refinedMessage = await this.refineMessage(data.message, data.userHistory)
     const systemInstruction = getCurrentSystemInstruction()
-    const context = await this.retriveContext(data.message)
+    const context = await this.retriveContext(refinedMessage)
 
     const history: HistoryType = []
     if (data.userData) history.push({ role: 'user', parts: [{ text: data.userData }] })
     if (data.userHistory) history.push(...data.userHistory)
 
     const chat = this.gemini.chats.create({
-      model: data.config?.model ?? 'gemini-3.0-pro-preview',
+      model: data.config?.model ?? env.SAN_MODEL,
       history,
       config: {
         temperature: data.config?.temperature ?? 1,
@@ -273,7 +289,7 @@ Sua única saída deve ser a invocação da ferramenta 'create_report' com todos
     .leftJoin(medicalFile, eq(medicalData.fileId, medicalFile.id))
     .where(gt(similarity, 0.5))
     .orderBy(desc(similarity))
-    .limit(5);
+    .limit(15)
 
     return results.map(r => `FONTE: ${r.fileName}\nCONTEÚDO: ${r.content}`).join("\n---\n")
   }
