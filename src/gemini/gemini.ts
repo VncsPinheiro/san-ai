@@ -79,6 +79,8 @@ class GeminiManager {
     config?: { temperature?: Temperature, model?: Models, system?: string }
   }) {
     const refinedMessage = await this.refineMessage(data.message, data.userHistory)
+    console.log(refinedMessage)
+
     const systemInstruction = getCurrentSystemInstruction()
     const context = await this.retriveContext(refinedMessage)
 
@@ -109,6 +111,7 @@ class GeminiManager {
 
     return {
 			text: response.text,
+      context,
 		}
   }
 
@@ -289,7 +292,7 @@ Sua única saída deve ser a invocação da ferramenta 'create_report' com todos
     .leftJoin(medicalFile, eq(medicalData.fileId, medicalFile.id))
     .where(gt(similarity, 0.5))
     .orderBy(desc(similarity))
-    .limit(15)
+    .limit(10);
 
     return results.map(r => `FONTE: ${r.fileName}\nCONTEÚDO: ${r.content}`).join("\n---\n")
   }
