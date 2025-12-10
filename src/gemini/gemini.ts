@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 import { env } from "../env";
 import { getCurrentSystemInstruction } from "./default-system-instruction";
 import { HistoryType } from "../types/History";
@@ -28,47 +28,71 @@ class GeminiManager {
       return instance
   }
 
-  private async refineMessage(message: string, userHistory?: HistoryType) {
+  private async refineMessage(message: string, userHistory?: HistoryType, userData?: string) {
     if (!userHistory || userHistory.length === 0) return message
 
     const refinerInstruction = `
-    TASK: Reescreva a última mensagem do usuário para torná-la autossuficiente, substituindo pronomes pelo contexto do histórico.
+    ROLE: Você é um EXTRATOR DE QUERY PARA RAG.
+    Sua função é transformar a entrada do usuário em uma frase de busca técnica.
+
+    === PRONTUÁRIO ATIVO DO USUÁRIO ===
+    ${userData ? userData : "Nenhum dado clínico registrado."}
+    ===================================
+
+    DIRETRIZES DE SUBSTITUIÇÃO (PRIORIDADE MÁXIMA):
+    1. SE o usuário disser "minha doença", "meu problema" ou "tenho isso":
+       - OLHE no "PRONTUÁRIO ATIVO" acima.
+       - SUBSTITUA o termo genérico pelo nome exato da doença listada.
+       - EXEMPLO: Se o prontuário tem "Diabetes" e o user diz "O que comer pra minha doença?", o Output DEVE SER "Dieta recomendada para Diabetes".
     
-    EXEMPLOS DE COMPORTAMENTO:
-    
-    Histórico: "O que é Dengue?"
-    Input: "E quais os sintomas dela?"
-    Output: "Quais os sintomas da Dengue?"
+    2. SE o Prontuário estiver VAZIO ou não tiver a doença:
+       - Output: "Consultar lista de doenças do paciente".
 
-    Histórico: "Estou com muita dor de cabeça"
-    Input: "É perigoso?"
-    Output: "Dor de cabeça forte é perigoso?"
+    3. DESAMBIGUAÇÃO PADRÃO:
+       - Substitua "ela/ele/isso" pelo sujeito da mensagem anterior.
 
-    Histórico: "Bom dia"
-    Input: "Tudo bem?"
-    Output: "Tudo bem?"
+    4. NEUTRALIZAÇÃO:
+       - Remova "socorro", "por favor", "acho que".
 
-    REGRAS FINAIS:
-    - Mantenha o idioma original (PT-BR).
-    - Responda APENAS a frase reescrita. Nada de "Aqui está:".
+    EXEMPLOS DE COMPORTAMENTO (Apenas referência de formato):
+    Input: "Meu Deus, acho que vou morrer de infarto!" -> Output: Sintomas de infarto agudo
+    Input: "Quais são minhas doenças?" -> Output: Doenças crônicas listadas no prontuário
+    Input: "Grávida pode tomar ela?" -> Output: Grávida pode tomar Dipirona?
+    Input: "Socorro, meu filho bebeu cândida!" -> Output: Primeiros socorros ingestão de água sanitária
     `.trim()
 
+    const safetySettings = [
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE},
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE},
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE }
+    ]
+
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout limit reached')), 2000); // 2000ms = 2s
+    })
+
     const refinerChat = this.gemini.chats.create({
-      model: 'gemini-2.0-flash-lite', 
+      model: 'gemini-2.5-flash-lite', 
       history: userHistory,
       config: {
+        safetySettings,
         temperature: 0.0,
         topK: 1,
         systemInstruction: refinerInstruction,
       }
     })
-
     try {
-     const result = await refinerChat.sendMessage({ message }) 
-     return result.text?.trim() ?? message
+      const result: any = await Promise.race([
+          refinerChat.sendMessage({ message }),
+          timeoutPromise
+        ])
+        console.log('Resultado da geração do modelo: ', result.text)
+        return result.text?.trim() ?? message
+
     } catch (err) {
-      console.error('Ocorreu um erro ao refinar a pergunta para o RAG. Erro: ', err)
-      return message
+        console.warn('Erro no refinamento, usando mensagem original:', err)
+        return message
     }
   }
 
@@ -112,6 +136,7 @@ class GeminiManager {
     return {
 			text: response.text,
       context,
+      refinedMessage,
 		}
   }
 
@@ -315,3 +340,64 @@ Sua única saída deve ser a invocação da ferramenta 'create_report' com todos
 }
 
 export const gemini = GeminiManager.getInstance()
+
+
+    // const refinerInstruction = `
+    // ROLE: Você é um MOTOR DE BUSCA SEMÂNTICA (Database Query Extractor).
+    // NÃO é um assistente, NÃO é um médico e NÃO deve dar conselhos.
+
+    // OBJECTIVE: Converta a entrada do usuário em uma query de busca simples e direta para recuperar documentos técnicos.
+
+    // RULES:
+    // 1. IGNORE totalmente o estado emocional, dores ou medos do usuário.
+    // 2. REMOVA saudações, pedidos de ajuda ou frases de conversa.
+    // 3. SE o input for uma afirmação de doença ("Estou com X"), CONVERTA para "Sintomas de X" ou "Diagnóstico de X".
+    // 4. Mantenha o idioma PT-BR.
+
+    // EXEMPLOS DE "HARDENING":
+    // Input: "Meu Deus, acho que vou morrer de infarto!"
+    // Output: "Sintomas de infarto agudo"
+
+    // Input: "Estou com muito medo de ter pegado AIDS."
+    // Output: "Diagnóstico e transmissão da AIDS"
+
+    // Input: "Minha cabeça vai explodir de dor."
+    // Output: "Causas de dor de cabeça intensa"
+
+    // Input: "Acho que estou com essa doença (AIDS)" (Contexto: AIDS)
+    // Output: "Sintomas e diagnóstico da AIDS"
+
+    // OUTPUT FINAL (Apenas a frase):
+    // TASK: Reescreva a última mensagem do usuário para torná-la adequada ao RAG, substituindo pronomes pelo contexto do histórico.
+    
+    // EXEMPLOS DE COMPORTAMENTO:
+
+    // Histórico: "Para que serve a Dipirona?"
+    // Input: "Grávida pode tomar ela?"
+    // Output: "Grávida pode tomar Dipirona?"
+
+    // Histórico: "Como tratar gastrite nervosa?"
+    // Input: "O que devo evitar comer?"
+    // Output: "O que devo evitar comer se tenho gastrite nervosa?"
+
+    // Histórico: "Estou sentindo uma dor no peito esquerdo."
+    // Input: "Pode ser infarto?"
+    // Output: "Dor no peito esquerdo pode ser infarto?"
+
+    // Histórico: "A vacina da gripe dá reação?"
+    // Input: "Quanto tempo dura isso?"
+    // Output: "Quanto tempo dura a reação da vacina da gripe?"
+
+    // Histórico: "O que é colesterol HDL?"
+    // Input: "E qual a diferença pro LDL?"
+    // Output: "Qual a diferença entre colesterol HDL e LDL?"
+
+    // Histórico: "Obrigado, San."
+    // Input: "Por nada."
+    // Output: "Por nada."
+
+    // REGRAS FINAIS:
+    // - Mantenha o idioma original (PT-BR).
+    // - Responda APENAS a frase reescrita. Nada de "Aqui está:".
+    // 
+    

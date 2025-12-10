@@ -15,6 +15,7 @@ import cors from '@fastify/cors';
 import { getFileRoute } from './routes/get-file'
 import { postCheckRoute } from './routes/post-check'
 import { createMedicalReportRoute } from './routes/create-medical-report'
+import { healthCheckRoute } from './routes/health-check'
 
 const app = fastify({
 	bodyLimit: 50 * 1024 * 1024 // 50 MB
@@ -39,6 +40,7 @@ app.setValidatorCompiler(validatorCompiler)
 app.get('/', () => {
 	return 'OK'
 })
+app.register(healthCheckRoute)
 
 app.register(addFileRoute)
 app.register(createQuestionRoute)
